@@ -17,7 +17,6 @@
   },
   "include": [
     "codex-tools.ts",
-    "codex-tools/**/*.ts",
-    "test/*.ts"
+    "codex-tools/**/*.ts"
   ]
 }

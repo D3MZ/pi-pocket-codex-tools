@@ -9,11 +9,8 @@
     "node": ">=24"
   },
   "scripts": {
-    "test": "node --test test/dictation.test.ts test/search.test.ts test/install.test.ts",
-    "test:pocket": "node --test test/pocket-ui.test.ts",
     "check": "tsc --noEmit && node --check codex-tools/index.js",
-    "format": "prettier --write codex-tools.ts codex-tools test install.mjs",
-    "install:pocket": "node install.mjs"
+    "format": "prettier --write codex-tools.ts codex-tools"
   },
   "overrides": {
     "@earendil-works/chord": "1.1.0",

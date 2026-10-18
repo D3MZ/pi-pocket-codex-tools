@@ -9,7 +9,7 @@ Dictation is ported from **[pi-codex-conversion](https://github.com/IgorWarzocha
 Paste this into your clanker:
 
 ```text
-Install Pi Pocket Codex Tools from this repository. Ask me for its URL if necessary.
+Install Pi Pocket Codex Tools from https://github.com/SlightlyOffSync/pi-pocket-codex-tools.
 On the Pocket server, locate the active Pocket data directory and read the extension source.
 Copy codex-tools/index.js and codex-tools/types.d.ts into <data>/extensions/codex-tools/.
 Then copy codex-tools.ts into <data>/extensions/ last.

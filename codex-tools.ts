@@ -116,7 +116,8 @@ export const DICTATION_UPDATE = {
                 noise_reduction: { type: "near_field" },
                 transcription: {
                     model: "gpt-live-transcribe",
-                    language: process.env.PI_CODEX_DICTATION_LANGUAGE || "en",
+                    languages: [process.env.PI_CODEX_DICTATION_LANGUAGE || "en"],
+                    prompt: "English speech from a software developer dictating instructions to a coding assistant. Topics include code, Git repositories, APIs, command-line tools, file paths, and programming identifiers. Use English spelling and punctuation. Omit non-lexical hesitation sounds such as um, uh, and ah without changing the meaning. Preserve intentional words and technical names; do not invent speech.",
                 },
                 // gpt-live-transcribe requires explicit commits instead of server VAD.
                 turn_detection: null,

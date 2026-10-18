@@ -1,6 +1,6 @@
 {
   "name": "pi-pocket-codex-tools",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Codex web search and streaming dictation for Pi Pocket, adapted from pi-codex-conversion.",
   "type": "module",

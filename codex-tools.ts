@@ -115,15 +115,11 @@ export const DICTATION_UPDATE = {
                 format: { type: "audio/pcm", rate: 24000 },
                 noise_reduction: { type: "near_field" },
                 transcription: {
-                    model: "gpt-4o-mini-transcribe",
+                    model: "gpt-live-transcribe",
                     language: process.env.PI_CODEX_DICTATION_LANGUAGE || "en",
                 },
-                turn_detection: {
-                    type: "server_vad",
-                    threshold: 0.5,
-                    prefix_padding_ms: 300,
-                    silence_duration_ms: 250,
-                },
+                // gpt-live-transcribe requires explicit commits instead of server VAD.
+                turn_detection: null,
             },
         },
     },

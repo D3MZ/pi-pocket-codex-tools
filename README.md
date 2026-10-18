@@ -20,7 +20,13 @@ Tell me to enable codex-tools in Menu → Extensions. An enabled installation re
 
 Search uses `codex login`; dictation uses Pi's `openai-codex` sign-in. Tap the mic beside Send to dictate. Tap it again to stop, or tap Send to finalize and send.
 
-Dictation defaults to English. Set `PI_CODEX_DICTATION_LANGUAGE` before server startup to use another language.
+Dictation uses `gpt-live-transcribe` and defaults to English. Set `PI_CODEX_DICTATION_LANGUAGE` before server startup to use another language. This model requires explicit audio commits, so server-side turn detection is disabled.
+
+## Local development
+
+The sibling checkout at `~/Work/pi-pocket-codex-tools/` is the canonical source. It tracks `SlightlyOffSync/pi-pocket-codex-tools` on GitHub.
+
+The active Pocket data folder holds a deployed copy of `codex-tools.ts` and `codex-tools/`, with no Git metadata or history. After a change, commit and push from the canonical checkout, then copy those files from that commit into Pocket. Copy the browser/type files first and the server entry last. Do not edit the deployed copy independently.
 
 ## Data and permissions
 

@@ -42,6 +42,11 @@ export default function setup(pocket) {
     const icon =
         '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg>';
 
+    const rotation = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? ""
+        : '<animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.9s" repeatCount="indefinite"/>';
+    const spinner = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9" opacity="0.25"/><g><path d="M12 3a9 9 0 0 1 9 9" stroke-linecap="round"/>${rotation}</g></svg>`;
+
     mic.type = "button";
     mic.className = "icon-button";
     mic.dataset.codexDictation = "true";
@@ -58,15 +63,16 @@ export default function setup(pocket) {
                     ? "Transcribing dictation"
                     : "Codex dictation";
 
+        const loading = state === "connecting" || state === "transcribing";
+
+        mic.dataset.state = state;
         mic.setAttribute("aria-label", label);
         mic.setAttribute("aria-pressed", String(state === "recording" || state === "connecting"));
+        mic.setAttribute("aria-busy", String(loading));
         mic.title = label;
         mic.disabled = state === "transcribing";
-        mic.style.color = state === "recording" || state === "connecting" ? "var(--err)" : "";
-        mic.innerHTML =
-            state === "recording" || state === "connecting"
-                ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>'
-                : icon;
+        mic.style.color = state === "recording" ? "var(--err)" : loading ? "var(--accent)" : "";
+        mic.innerHTML = loading ? spinner : icon;
     }
 
     function release(recording) {
@@ -350,8 +356,9 @@ export default function setup(pocket) {
             upload: Promise.resolve(),
             queuedBytes: 0,
             bufferedBytes: 0,
-            at: box.selectionStart,
-            end: box.selectionEnd,
+            // A mic tap appends to the draft, regardless of a saved caret/selection.
+            at: box.value.length,
+            end: box.value.length,
         };
 
         current = recording;

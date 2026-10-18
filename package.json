@@ -1,0 +1,38 @@
+{
+  "name": "pi-pocket-codex-tools",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Codex web search and streaming dictation for Pi Pocket, adapted from pi-codex-conversion.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node --test test/dictation.test.ts test/search.test.ts test/install.test.ts",
+    "test:pocket": "node --test test/pocket-ui.test.ts",
+    "check": "tsc --noEmit && node --check codex-tools/index.js",
+    "format": "prettier --write codex-tools.ts codex-tools test install.mjs",
+    "install:pocket": "node install.mjs"
+  },
+  "overrides": {
+    "@earendil-works/chord": "1.1.0",
+    "@earendil-works/pi-agent-core": "1.1.0",
+    "@earendil-works/pi-codemode": "1.1.0",
+    "@earendil-works/pi-mcp": "1.1.0",
+    "@earendil-works/pi-tui": "1.1.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": ">=1.1.0",
+    "@earendil-works/pi-durable": ">=1.1.0",
+    "@earendil-works/pi-coding-agent": ">=1.1.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "1.1.0",
+    "@earendil-works/pi-durable": "1.1.0",
+    "@earendil-works/pi-coding-agent": "1.1.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^6.0.3",
+    "prettier": "^3.6.0"
+  }
+}

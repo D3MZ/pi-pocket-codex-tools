@@ -224,14 +224,23 @@ export function createDictation(
 
     return {
         async start(owner: string, headers: Record<string, string>, signal: AbortSignal) {
-            if (
-                [...sessions.values()].some((session) => session.owner === owner) ||
-                sessions.size >= 2
-            ) {
-                throw new Error("A dictation recording is already active. Stop it first.");
+            signal.throwIfAborted();
+
+            // A lost DELETE or start response can leave a recording with no browser UI.
+            // A new explicit mic request replaces only this owner's previous recording.
+            for (const [previousId, previous] of sessions) {
+                if (previous.owner === owner) {
+                    close(previousId);
+                    update?.(previousId, owner, {
+                        error: "Dictation stopped because a new recording started.",
+                    });
+                }
             }
 
-            signal.throwIfAborted();
+            if (sessions.size >= 2) {
+                throw new Error("Dictation is busy. Try again shortly.");
+            }
+
             const id = randomUUID();
             const socket = connect(headers);
             const completion = Promise.withResolvers<string>();

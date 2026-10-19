@@ -180,6 +180,46 @@ async function until(page, expression) {
     await page.waitForFunction(expression, { timeout: 5000 });
 }
 
+test("waveform scrolls at half speed and retains twice the audio history", async (t) => {
+    const page = await fixture(t);
+    await page.clock.install();
+    await page.clock.pauseAt(new Date());
+    await page.evaluate(() => document.querySelector("[data-codex-dictation]").click());
+    await page.clock.runFor(100);
+    await page.evaluate(() => {
+        window.sample = 160;
+        window.historyPixels = () => {
+            const canvas = document.querySelector("[data-codex-waveform] canvas");
+            const { width, height } = canvas;
+            const pixels = canvas.getContext("2d").getImageData(0, 0, width, height).data;
+            let painted = 0;
+            for (let y = 0; y < height; y++) {
+                if (Math.abs(y - height / 2) <= 4) continue;
+                for (let x = 0; x < width; x++) if (pixels[(y * width + x) * 4 + 3]) painted++;
+            }
+            return painted;
+        };
+    });
+    await page.clock.runFor(300);
+    assert.ok(
+        (await page.evaluate(() => window.historyPixels())) > 0,
+        "speech paints real history",
+    );
+    await page.evaluate(() => (window.sample = 128));
+    await page.clock.runFor(3500);
+    assert.ok(
+        (await page.evaluate(() => window.historyPixels())) > 0,
+        "history remains beyond the old 50 ms/bar window",
+    );
+    await page.clock.runFor(4000);
+    assert.equal(
+        await page.evaluate(() => window.historyPixels()),
+        0,
+        "history eventually scrolls out into silence",
+    );
+    await page.evaluate(() => window.dispose());
+});
+
 test("provider choice is touch-friendly, persistent, and explicit about processing", async (t) => {
     const page = await fixture(t);
     assert.equal(await page.locator(select).inputValue(), "codex");

@@ -2,6 +2,8 @@ export const pocketApi = 1;
 
 const MAX_RECORDING_MS = 3 * 60 * 1000;
 const MAX_RECORDING_BYTES = (MAX_RECORDING_MS / 1000) * 24000 * 2;
+// One bar per 100 ms: half-speed scrolling and twice the visible audio history.
+const WAVEFORM_HISTORY_STEP_MS = 100;
 
 // PCM16, mono, 24 kHz: the wire format used by Codex dictation.
 export function pcm24k(samples, rate) {
@@ -196,7 +198,7 @@ export default function setup(pocket) {
 
                 const now = performance.now();
 
-                if (now - lastSampleAt >= 50) {
+                if (now - lastSampleAt >= WAVEFORM_HISTORY_STEP_MS) {
                     recording.analyser?.getByteTimeDomainData(samples);
                     let energy = 0;
 

@@ -26,7 +26,7 @@ Tell me to enable codex-tools in Menu → Extensions.
 
 Ask Pi to search the web. Choose a dictation provider beside the mic, then tap the mic beside Send to dictate. Codex is the default. Your choice is saved in this browser under `x.codex-tools.provider` (when local storage is available).
 
-- **Codex:** sends audio to OpenAI for transcription; requires Pi's OpenAI Codex sign-in. The extension does not save audio files. The waveform shows real microphone levels.
+- **Codex:** sends audio to OpenAI for transcription; requires Pi's OpenAI Codex sign-in. The extension does not save audio files. The waveform shows real microphone levels. Its history advances at 100 ms per bar: half the original scroll speed, showing twice as much time in the same space. Audio capture and transcription timing are unchanged.
 - **Browser / Apple:** uses `SpeechRecognition` or `webkitSpeechRecognition`, when available. Your browser vendor controls speech processing and may send audio to its servers; this is **not a guarantee of on-device or private processing**, including on Apple devices. This mode does not use Codex routes, credentials, or the extension's audio capture pipeline. Browser speech exposes no microphone levels, so the display is a quiet line, not a live waveform. Availability and session duration depend on your browser; the option is disabled when the API is absent.
 
 Changing providers cancels the current session (including pending transcription); text already inserted in the draft is preserved. The built-in Pocket mic remains hidden while this extension is active. This works with Pi Pocket 0.14 without a `pocket.dictation` API.

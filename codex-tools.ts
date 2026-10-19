@@ -1,9 +1,14 @@
 /**
  * Codex web search and microphone dictation using existing sign-ins. Search runs local codex exec with Codex credentials/config and sends queries to its configured service (normally chatgpt.com). On a mic tap, dictation reads Pi's auth.json and models.json, may refresh credentials via auth.openai.com, and sends audio and Codex credentials to api.openai.com. Audio stays in memory. Search uses temporary files; Codex/Pi may update auth caches. Dictation modifies Pocket's internal composer DOM; not gallery-ready.
  */
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Type } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { defineExtension, defineTool } from "@earendil-works/pi-durable";
 import type { Host, Web } from "./codex-tools/types.d.ts";
 
 export const pocketApi = 1;
@@ -31,7 +36,7 @@ export default function codexTools(host: Host, web: Web) {
         if (!token) {
             throw web.error(
                 400,
-                "Dictation requires the legacy OpenAI Codex login. Sign in to OpenAI Codex in Providers first.",
+                "Dictation requires an OpenAI Codex login. Sign in to OpenAI Codex in Providers first.",
             );
         }
 
@@ -106,6 +111,9 @@ export default function codexTools(host: Host, web: Web) {
 
 /** Bounded, short-lived Codex dictation connections. No audio is stored on disk. */
 
+const MAX_RECORDING_SECONDS = 3 * 60;
+const SESSION_TIMEOUT_MS = (MAX_RECORDING_SECONDS + 30) * 1000;
+
 export const DICTATION_UPDATE = {
     type: "session.update",
     session: {
@@ -115,10 +123,10 @@ export const DICTATION_UPDATE = {
                 format: { type: "audio/pcm", rate: 24000 },
                 noise_reduction: { type: "near_field" },
                 transcription: {
-                    model: "gpt-live-transcribe",
+                    model: "gpt-transcribe",
                     languages: [process.env.PI_CODEX_DICTATION_LANGUAGE || "en"],
                 },
-                // gpt-live-transcribe requires explicit commits instead of server VAD.
+                // Use explicit commits for stop-and-transcribe dictation.
                 turn_detection: null,
             },
         },
@@ -253,7 +261,12 @@ export function createDictation(
                 segments: new Map(),
                 lastText: "",
                 revision: 0,
-                timer: setTimeout(() => close(id), 90000),
+                timer: setTimeout(() => {
+                    close(id);
+                    update?.(id, owner, {
+                        error: "Dictation session expired. Microphone stopped; start a new recording.",
+                    });
+                }, SESSION_TIMEOUT_MS),
                 transcript: completion.promise,
                 complete: completion.resolve,
                 fail: (error: Error) => {
@@ -279,30 +292,26 @@ export function createDictation(
                     const data = JSON.parse(event.data);
                     const type = data.type;
 
-                    if (type === "session.updated" || type === "transcription_session.updated") {
+                    if (type === "session.updated") {
                         ready.resolve();
                     } else if (type === "error") {
-                        // VAD can already have committed the last speech before Stop.
-                        if (
-                            session.finish &&
+                        throw new Error(
                             data.error?.code === "input_audio_buffer_commit_empty"
-                        ) {
-                            session.flushed = true;
-                            maybeComplete(session);
-                        } else {
-                            throw new Error(
-                                "Codex rejected dictation. Check your Codex login, account access, and network.",
-                            );
-                        }
+                                ? "No speech was captured. Try again."
+                                : "Codex rejected dictation. Check your Codex login, account access, and network.",
+                        );
                     } else if (type === "conversation.item.input_audio_transcription.failed") {
                         throw new Error("Codex could not transcribe the audio.");
                     } else if (
                         type === "input_audio_buffer.committed" ||
                         type === "conversation.item.input_audio_transcription.delta" ||
-                        type === "conversation.item.input_audio_transcription.completed" ||
-                        type === "input_audio_transcription.completed"
+                        type === "conversation.item.input_audio_transcription.completed"
                     ) {
-                        const item = typeof data.item_id === "string" ? data.item_id : "legacy";
+                        if (typeof data.item_id !== "string" || !data.item_id) {
+                            throw new Error("Invalid dictation item ID.");
+                        }
+
+                        const item = data.item_id;
                         const segment = session.segments.get(item) ?? { text: "", done: false };
 
                         if (session.segments.size >= 512 && !session.segments.has(item)) {
@@ -332,11 +341,6 @@ export function createDictation(
 
                             segment.text = data.transcript;
                             segment.done = true;
-
-                            // Compatibility with older sessions that omit commit acknowledgements.
-                            if (item === "legacy") {
-                                session.flushed ||= session.finish;
-                            }
                         }
 
                         textOf(session);
@@ -431,10 +435,10 @@ export function createDictation(
 
             const bytes = Buffer.from(audio, "base64").length;
 
-            if (!bytes || bytes % 2 || session.bytes + bytes > 24000 * 2 * 60) {
+            if (!bytes || bytes % 2 || session.bytes + bytes > 24000 * 2 * MAX_RECORDING_SECONDS) {
                 close(id);
 
-                throw new Error("Dictation accepts up to 60 seconds of PCM16 audio.");
+                throw new Error("Dictation accepts up to 3 minutes of PCM16 audio.");
             }
 
             session.bytes += bytes;
@@ -492,11 +496,6 @@ export function createDictation(
 }
 
 /** Search the web with the local Codex CLI and its existing login. */
-import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { Type } from "@earendil-works/pi-ai";
-import { defineExtension, defineTool } from "@earendil-works/pi-durable";
 
 // Minimal Pocket adapter inspired by ayagmar/pi-codex-web-search (MIT).
 // Run outside the workspace so project instructions and files are not supplied to Codex.

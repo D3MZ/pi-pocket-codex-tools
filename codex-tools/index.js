@@ -1,5 +1,8 @@
 export const pocketApi = 1;
 
+const MAX_RECORDING_MS = 3 * 60 * 1000;
+const MAX_RECORDING_BYTES = (MAX_RECORDING_MS / 1000) * 24000 * 2;
+
 // PCM16, mono, 24 kHz: the wire format used by Codex dictation.
 export function pcm24k(samples, rate) {
     const output = new Uint8Array(Math.floor((samples.length * 24000) / rate) * 2);
@@ -39,6 +42,36 @@ export default function setup(pocket) {
     let disposed = false;
     const hidden = new Map();
     const mic = document.createElement("button");
+    const limitNotice = document.createElement("span");
+    const waveform = document.createElement("button");
+    const waveformCanvas = document.createElement("canvas");
+    const waveformStop = document.createElement("span");
+
+    waveform.type = "button";
+    waveform.dataset.codexWaveform = "true";
+    waveform.setAttribute("aria-label", "Stop dictation");
+    waveform.title = "Stop dictation";
+    waveform.hidden = true;
+    waveform.style.cssText =
+        "position:fixed;z-index:40;padding:0;border:1px solid var(--line);border-radius:8px;background:var(--card,var(--bg,#17191e));color:var(--muted,#9ca3af);overflow:hidden;cursor:pointer;box-sizing:border-box";
+    waveformCanvas.setAttribute("aria-hidden", "true");
+    waveformCanvas.style.cssText =
+        "position:absolute;left:44px;top:0;display:block;width:calc(100% - 44px);height:100%";
+    waveformStop.setAttribute("aria-hidden", "true");
+    waveformStop.style.cssText =
+        "position:absolute;left:0;top:0;bottom:0;width:44px;display:grid;place-items:center;color:var(--text,#e8eaf0);pointer-events:none";
+    waveformStop.innerHTML =
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>';
+    waveform.append(waveformCanvas, waveformStop);
+    waveform.addEventListener("click", () => void finish());
+    document.body.append(waveform);
+
+    limitNotice.dataset.codexDictationLimit = "true";
+    limitNotice.setAttribute("role", "status");
+    limitNotice.setAttribute("aria-live", "polite");
+    limitNotice.hidden = true;
+    limitNotice.style.cssText =
+        "color:var(--muted);font-size:11px;line-height:1.2;max-width:8em;flex-shrink:1";
     const icon =
         '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg>';
 
@@ -73,11 +106,114 @@ export default function setup(pocket) {
         mic.disabled = state === "transcribing";
         mic.style.color = state === "recording" ? "var(--err)" : loading ? "var(--accent)" : "";
         mic.innerHTML = loading ? spinner : icon;
+        positionWaveform();
+    }
+
+    function positionWaveform() {
+        const recording = current;
+
+        if (!recording || recording.finishing || !sameBox(recording)) {
+            waveform.hidden = true;
+
+            return;
+        }
+
+        const rect = recording.box.getBoundingClientRect();
+
+        waveform.hidden = rect.width <= 0 || rect.height <= 0;
+        waveform.style.left = `${rect.left}px`;
+        waveform.style.top = `${rect.top}px`;
+        waveform.style.width = `${rect.width}px`;
+        waveform.style.height = `${rect.height}px`;
+    }
+
+    function drawWaveform(recording) {
+        const samples = new Uint8Array(recording.analyser.fftSize);
+        const context = waveformCanvas.getContext("2d");
+        const levels = [];
+        let lastSampleAt = -Infinity;
+        let previousLevel = 0;
+
+        function paint() {
+            if (disposed || current !== recording || recording.finishing) {
+                return;
+            }
+
+            positionWaveform();
+
+            if (context && !waveform.hidden) {
+                const width = waveformCanvas.clientWidth;
+                const height = waveformCanvas.clientHeight;
+                const ratio = window.devicePixelRatio || 1;
+                const pixelsWide = Math.max(1, Math.round(width * ratio));
+                const pixelsHigh = Math.max(1, Math.round(height * ratio));
+
+                if (waveformCanvas.width !== pixelsWide || waveformCanvas.height !== pixelsHigh) {
+                    waveformCanvas.width = pixelsWide;
+                    waveformCanvas.height = pixelsHigh;
+                }
+
+                const now = performance.now();
+
+                if (now - lastSampleAt >= 50) {
+                    recording.analyser.getByteTimeDomainData(samples);
+                    let energy = 0;
+
+                    for (const sample of samples) {
+                        energy += ((sample - 128) / 128) ** 2;
+                    }
+
+                    const level = Math.min(1, Math.sqrt(energy / samples.length) * 6);
+
+                    previousLevel = Math.max(level, previousLevel * 0.8);
+                    levels.push(previousLevel);
+
+                    if (levels.length > 256) {
+                        levels.shift();
+                    }
+
+                    lastSampleAt = now;
+                }
+
+                context.setTransform(ratio, 0, 0, ratio, 0, 0);
+                context.clearRect(0, 0, width, height);
+                context.strokeStyle = getComputedStyle(waveform).color;
+                context.fillStyle = context.strokeStyle;
+                context.lineWidth = 3;
+                context.lineCap = "round";
+                const count = Math.max(1, Math.floor((width - 8) / 7));
+                const center = height / 2;
+                const maximum = Math.max(2, Math.min(42, height - 12));
+
+                for (let index = 0; index < count; index++) {
+                    const level = levels[levels.length - count + index] ?? 0;
+                    const barHeight = level * maximum;
+                    const x = 4 + index * 7;
+
+                    context.beginPath();
+
+                    if (barHeight <= 3) {
+                        context.arc(x, center, 1.5, 0, Math.PI * 2);
+                        context.fill();
+                    } else {
+                        context.moveTo(x, center - barHeight / 2);
+                        context.lineTo(x, center + barHeight / 2);
+                        context.stroke();
+                    }
+                }
+            }
+
+            recording.waveFrame = requestAnimationFrame(paint);
+        }
+
+        paint();
     }
 
     function release(recording) {
         clearTimeout(recording.timer);
         clearInterval(recording.flushTimer);
+        cancelAnimationFrame(recording.waveFrame);
+        recording.analyser?.disconnect();
         recording.processor?.disconnect();
         recording.source?.disconnect();
         recording.gain?.disconnect();
@@ -321,6 +457,16 @@ export default function setup(pocket) {
         }
     }
 
+    function finishAtLimit(recording) {
+        if (current !== recording || recording.finishing || recording.abort.signal.aborted) {
+            return;
+        }
+
+        limitNotice.textContent = "Stopped · 3-minute limit";
+        limitNotice.hidden = false;
+        void finish();
+    }
+
     async function start() {
         const box = document.querySelector('[data-part~="composer"] textarea');
         const conversationId = pocket.conversationId();
@@ -362,6 +508,8 @@ export default function setup(pocket) {
         };
 
         current = recording;
+        limitNotice.textContent = "";
+        limitNotice.hidden = true;
         status("connecting");
         placeMic();
 
@@ -384,6 +532,8 @@ export default function setup(pocket) {
             }
 
             recording.source = recording.context.createMediaStreamSource(recording.stream);
+            recording.analyser = recording.context.createAnalyser();
+            recording.analyser.fftSize = 512;
             recording.processor = recording.context.createScriptProcessor(4096, 1, 1);
             recording.gain = recording.context.createGain();
             recording.gain.gain.value = 0;
@@ -397,7 +547,7 @@ export default function setup(pocket) {
                     event.inputBuffer.getChannelData(0),
                     recording.context.sampleRate,
                 );
-                const bounded = chunk.subarray(0, 24000 * 2 * 60 - recording.size);
+                const bounded = chunk.subarray(0, MAX_RECORDING_BYTES - recording.size);
 
                 recording.chunks.push(bounded);
                 recording.bufferedBytes += bounded.length;
@@ -413,15 +563,17 @@ export default function setup(pocket) {
                     return;
                 }
 
-                if (recording.size >= 24000 * 2 * 60) {
-                    void finish();
+                if (recording.size >= MAX_RECORDING_BYTES) {
+                    finishAtLimit(recording);
                 }
             };
 
-            recording.source.connect(recording.processor);
+            recording.source.connect(recording.analyser);
+            recording.analyser.connect(recording.processor);
             recording.processor.connect(recording.gain);
             recording.gain.connect(recording.context.destination);
-            recording.timer = setTimeout(() => void finish(), 60000);
+            drawWaveform(recording);
+            recording.timer = setTimeout(() => finishAtLimit(recording), MAX_RECORDING_MS);
             // Capture before the network handshake so early speech is not lost.
             const result = await pocket.api("start", {}, { signal: recording.abort.signal });
 
@@ -478,6 +630,7 @@ export default function setup(pocket) {
 
         if (!send || !composer.querySelector("textarea")) {
             mic.remove();
+            limitNotice.remove();
 
             return;
         }
@@ -496,6 +649,12 @@ export default function setup(pocket) {
         if (mic.nextElementSibling !== send) {
             send.before(mic);
         }
+
+        if (limitNotice.nextElementSibling !== mic) {
+            mic.before(limitNotice);
+        }
+
+        positionWaveform();
     }
 
     const stopUpdates = pocket.on("dictation", (data) => {
@@ -570,6 +729,8 @@ export default function setup(pocket) {
         document.removeEventListener("visibilitychange", onHidden);
         cancel();
         mic.remove();
+        limitNotice.remove();
+        waveform.remove();
 
         for (const [button, display] of hidden) {
             button.style.display = display;
